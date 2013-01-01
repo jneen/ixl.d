@@ -7,11 +7,21 @@
 .PHONY: all
 all: ixl
 
-.PHONY: test
-test: tmp/tested
+CLEAN += ixl *.o
 
-tmp/tested: ixl.test
+TEST = tmp/tested
+
+.PHONY: test
+test: $(TEST)
+
+CLEAN += $(TEST)
+
+$(TEST): ixl.test
 	@mkdir -p tmp
 	@touch $@
 	./$< --test
 	@echo tests passed.
+
+.PHONY: clean
+clean:
+	rm -rf $(CLEAN)

@@ -2,9 +2,21 @@ import std.stdio;
 import std.ascii;
 import std.string;
 
-extern(C) int isatty(int);
+int main(string[] argv) {
+  if (argv.length > 1 && argv[1] == "--test") return 0;
 
-class Node {
+  string input;
+  readf("%s", &input);
+
+  writeln(parseIxl(input));
+  return 0;
+}
+
+class AbstractNode {
+  // abstract string inspect();
+}
+
+class Node : AbstractNode {
   string tag;
 
   string payload;
@@ -46,18 +58,14 @@ class Scanner {
     return s[n + pos];
   }
 
-  bool test(char ch) {
-    return hasMore() && peek() == ch;
+  bool test(char ch) { return test(0, ch); }
+  bool test(size_t i, char ch) {
+    return hasMore() && peek(i) == ch;
   }
 
-  bool test(string st) {
-    if (!hasMore(st.length)) return false;
-
-    for (size_t i = 0; i < st.length; ++i) {
-      if (peek(i) != st[i]) return false;
-    }
-
-    return true;
+  bool test(string st) { return test(0, st); }
+  bool test(size_t i, string st) {
+    return hasMore() && inPattern(peek(i), st);
   }
 
   string advance() { return advance(1); }
@@ -154,16 +162,6 @@ class Scanner {
   }
 }
 
-int main(string[] argv) {
-  if (argv.length > 1 && argv[1] == "--test") return 0;
-
-  string input;
-  readf("%s", &input);
-
-  writeln(parseIxl(input).inspect());
-  return 0;
-}
-
 class IxlScanner : Scanner {
   enum spaces = " \t";
   enum wordTerminators = " \t\r\n#];";
@@ -216,15 +214,20 @@ end:
     assert(parsed == "a{{s{}d{f}}}");
   }
 
-  Node parseBlock() {
-    auto block = new Node("block");
+  class Block : AbstractNode {
+    Command[] commands;
+  }
+
+  Block parseBlock() {
+    auto block = new Block();
+
     expect('[', "a block");
 
     parseWhitespace();
     while(hasMore()) {
       if (peek() == ']') return block;
 
-      block.children ~= parseCommand();
+      block.commands ~= parseCommand();
     }
 
     parseError("unexpected EOF");
@@ -235,52 +238,76 @@ end:
 
   unittest {
     auto n = (new IxlScanner("[]")).parseBlock();
-    assert(n.tag == "block");
-    assert(n.children.length == 0);
+    assert(n.commands.length == 0);
 
     n = (new IxlScanner("[foo --bar]")).parseBlock();
-    assert(n.tag == "block");
-    assert(n.children.length == 1);
-    assert(n.children[0].tag == "command");
-    assert(n.children[0].children.length == 2);
-    assert(n.children[0].children[0].tag == "string");
-    assert(n.children[0].children[0].payload == "foo");
-    assert(n.children[0].children[1].tag == "flag");
-    writeln(n.inspect());
-    assert(n.children[0].children[1].children.length == 1);
-    assert(n.children[0].children[1].children[0].payload == "bar");
-
-    n = (new IxlScanner("[[]]")).parseBlock();
+    assert(n.commands.length == 1);
+    assert(n.commands[0].call !is null);
+    assert(n.commands[0].call.type == Term.TermType.STRING);
+    assert(n.commands[0].call.string_ == "foo");
+    assert("bar" in n.commands[0].flags);
   }
 
-  Node parseTerm() {
+  class Term {
+    enum TermType { BLOCK, VARIABLE, STRING, NODE };
+
+    TermType type;
+    union {
+      Block block;
+      string variable;
+      string string_;
+      Node node;
+    }
+  }
+
+  Term parseTerm() {
+    auto term = new Term();
+
     switch (peek()) {
       // variables
       case '.':
         advance();
-        return new Node("variable", parseString());
+        term.type = Term.TermType.VARIABLE;
+        term.variable = parseString();
+        return term;
+
+      case '[':
+        term.type = Term.TermType.BLOCK;
+        term.block = parseBlock();
+        return term;
 
       // string literals
       case '\'':
         advance();
-        return new Node("string", parseString());
-
-      case '[':
-        return parseBlock();
+        goto default;
 
       // barewords by default
       default:
-        return new Node("string", parseString());
+        term.type = Term.TermType.STRING;
+        term.string_ = parseString();
+        return term;
     }
   }
 
   unittest {
-    auto n = (new IxlScanner(".foo")).parseTerm();
-    assert(n.tag == "variable");
-    assert(n.payload == "foo");
+    Term t = (new IxlScanner(".foo")).parseTerm();
+    assert(t.type == Term.TermType.VARIABLE);
+    assert(t.variable == "foo");
+
+    t = (new IxlScanner(".;")).parseTerm();
+    assert(t.type == Term.TermType.VARIABLE);
+    assert(t.variable == "");
+
+    t = (new IxlScanner("'{foo}")).parseTerm();
+    assert(t.type == Term.TermType.STRING);
+    assert(t.string_ == "foo");
+
+    t = (new IxlScanner("[  foo  ]")).parseTerm();
+    assert(t.type == Term.TermType.BLOCK);
+    assert(t.block.commands.length == 1);
   }
 
-  // whitespace which may include newlines and semicolons
+  // whitespace which may include newlines, semicolons, and comments
   void parseWhitespace() {
     consume(" \t\r\n;");
 
@@ -296,24 +323,29 @@ end:
     consume(spaces);
 
     // escaped newlines
-    while(test("\\\n")) {
+    while(test('\\') && test(1, '\n')) {
       advance(2);
       consume(spaces);
     }
   }
 
-  Node parseFlag() {
+  class Flag : AbstractNode {
+    string name;
+    Term argument = null;
+  }
+
+  Flag parseFlag() {
     expect('-', "a flag");
 
     if (test('-')) advance();
 
-    auto flag = new Node("flag");
-    flag.children ~= new Node("string", parseString());
+    auto flag = new Flag();
+    flag.name = parseString();
 
     parseSpaces();
 
-    if (!test('-')) {
-      flag.children ~= parseTerm();
+    if (!test('-') && !test(wordTerminators)) {
+      flag.argument = parseTerm();
       parseSpaces();
     }
 
@@ -322,28 +354,34 @@ end:
 
   // a command.
   // @target cmd opts...
-  Node parseCommand() {
-    auto command = new Node("command");
+  class Command : AbstractNode {
+    Term target = null;
+    Term call;
+    Flag[string] flags;
+    Command pipe;
+  }
+
+  Command parseCommand() {
+    auto command = new Command();
 
     if (test('@')) {
       advance();
-      auto target = new Node("target");
-      target.children ~= parseTerm();
-      command.children ~= target;
+      command.target = parseTerm();
     }
 
-    writeln(inspect());
-    if (hasMore()) {
-      command.children ~= parseTerm();
-      parseSpaces();
-    }
+    if (!hasMore()) parseError("expected command");
 
-    writeln(inspect());
+    command.call = parseTerm();
+
+    parseSpaces();
 
     while(hasMore()) {
-      writeln(inspect());
       switch(peek()) {
-        case ']', ';':
+        case ']':
+          return command;
+
+        case ';':
+          advance();
           return command;
 
         // continue pipes after newlines or comments as in
@@ -356,14 +394,14 @@ end:
           else return command;
 
         case '|':
-          auto pipe = new Node("pipe");
-          advance(); parseWhitespace();
-          command.children ~= pipe;
-          pipe.children ~= parseCommand();
+          advance();
+          parseSpaces();
+          command.pipe = parseCommand();
           return command;
 
         case '-':
-          command.children ~= parseFlag();
+          auto flag = parseFlag();
+          command.flags[flag.name] = flag;
           break;
 
         default:
@@ -375,34 +413,36 @@ end:
   }
 
   unittest {
-    auto n = (new IxlScanner("foo -f .bar # comment\n other commands")).parseCommand();
-    assert(n.tag == "command");
-    assert(n.children.length == 2);
-    assert(n.children[0].tag == "string");
-    assert(n.children[0].payload == "foo");
-    assert(n.children[1].tag == "variable");
-    assert(n.children[1].payload == "bar");
+    Command c = (new IxlScanner("foo -f .bar # comment\n other commands")).parseCommand();
+    assert(c.target is null);
+    assert(c.call !is null);
+    assert(c.flags.length == 1);
+    assert("f" in c.flags);
+    assert(c.flags["f"].argument !is null);
+    assert(c.flags["f"].argument.type == Term.TermType.VARIABLE);
+    assert(c.flags["f"].argument.variable == "bar");
 
-    n = (new IxlScanner("@.{foo} -a bar")).parseCommand();
-    assert(n.tag == "command");
-    assert(n.children.length > 0);
-    assert(n.children[0].tag == "target");
-    assert(n.children[0].children.length == 1);
-    assert(n.children[0].children[0].tag == "variable");
-    assert(n.children[0].children[0].payload == "foo");
+    c = (new IxlScanner("@.foo -a bar")).parseCommand();
+    assert(c.target !is null);
+    assert(c.target.type == Term.TermType.VARIABLE);
+    assert(c.target.variable == "foo");
 
     // pipe continuations
-    n = (new IxlScanner("foo \n   |bar")).parseCommand();
-    assert(n.children.length == 2);
-    assert(n.children[1].tag == "pipe");
+    c = (new IxlScanner("foo \n   |bar")).parseCommand();
+    assert(c.pipe !is null);
+    assert(c.pipe.pipe is null);
   }
 
-  Node parseIxl() {
-    auto program = new Node("program");
+  class Program : AbstractNode {
+    Command[] commands;
+  }
+
+  Program parseIxl() {
+    auto program = new Program();
     parseWhitespace();
 
     while (hasMore()) {
-      program.children ~= parseCommand();
+      program.commands ~= parseCommand();
       parseWhitespace();
     }
 
@@ -410,20 +450,16 @@ end:
   }
 
   unittest {
-    auto p = (new IxlScanner("a | b | c; d | e | f\ng")).parseIxl();
-    assert(p.tag == "program");
-    assert(p.children.length == 3);
+    Program p = (new IxlScanner("a | b | c; d | e | f\ng")).parseIxl();
+    assert(p.commands.length == 3);
   }
 }
 
-Node parseIxl(in string s) {
+IxlScanner.Program parseIxl(in string s) {
   return (new IxlScanner(s)).parseIxl();
 }
 
 unittest {
-  auto node = parseIxl("  .foo\n");
-  assert(node.tag == "program");
-
-  assert(node.children.length == 1);
-  assert(node.children[0].tag == "command");
+  auto p = parseIxl("  .foo\n");
+  assert(p.commands.length == 1);
 }
