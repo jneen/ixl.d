@@ -1,4 +1,3 @@
 # build artifacts
-*.o
-*.test
-/ixl
+/bin
+/lib

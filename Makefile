@@ -1,25 +1,25 @@
-%: %.d
-	dmd -of$@ $<
+DFLAGS =
+DC = dmd
 
-%.test: %.d
-	dmd -of$@ -unittest $<
+bin/%: src/%.d
+	$(DC) $(DFLAGS) -of$@ -od./lib $<
+
+lib/%.o: src/%.d
+	$(DC) $(DFLAGS) -of$@ -od./lib $<
 
 .PHONY: all
-all: ixl
+all: bin/ixl
 
-CLEAN += ixl *.o
-
-TEST = tmp/tested
+CLEAN += bin/ixl **/*.o
 
 .PHONY: test
+TEST = tmp/test
 test: $(TEST)
 
-CLEAN += $(TEST)
-
-$(TEST): ixl.test
-	@mkdir -p tmp
+$(TEST): src/ixl.d
+	@mkdir -p $(dir $(TEST))
 	@touch $@
-	./$< --test
+	$(DC) $(DFLAGS) -of$@ -unittest -run $< --test
 	@echo tests passed.
 
 .PHONY: clean
