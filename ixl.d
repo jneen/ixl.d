@@ -12,40 +12,6 @@ int main(string[] argv) {
   return 0;
 }
 
-class AbstractNode {
-  // abstract string inspect();
-}
-
-class Node : AbstractNode {
-  string tag;
-
-  string payload;
-  Node[] children;
-
-  this(string t, string p) { tag = t; payload = p; }
-  this(string t) { tag = t; children = []; }
-
-  string inspect() {
-    if (payload) {
-      return format("(%s (%s))", tag, payload);
-    }
-    else {
-      string[] childForms;
-
-      foreach(child; this.children) childForms ~= child.inspect();
-
-      return format("(%s (%s))", tag, childForms.join(" "));
-    }
-  }
-
-  unittest {
-    Node n = new Node("a-tag");
-    n.children ~= new Node("foo", "bar");
-    n.children ~= new Node("baz", "zot");
-    assert(n.inspect() == "(a-tag ((foo (bar)) (baz (zot))))");
-  }
-}
-
 class Scanner {
   string s;
   size_t pos = 0;
@@ -214,7 +180,7 @@ end:
     assert(parsed == "a{{s{}d{f}}}");
   }
 
-  class Block : AbstractNode {
+  class Block {
     Command[] commands;
   }
 
@@ -249,14 +215,13 @@ end:
   }
 
   class Term {
-    enum TermType { BLOCK, VARIABLE, STRING, NODE };
+    enum TermType { BLOCK, VARIABLE, STRING };
 
     TermType type;
     union {
       Block block;
       string variable;
       string string_;
-      Node node;
     }
   }
 
@@ -329,7 +294,7 @@ end:
     }
   }
 
-  class Flag : AbstractNode {
+  class Flag {
     string name;
     Term argument = null;
   }
@@ -354,7 +319,7 @@ end:
 
   // a command.
   // @target cmd opts...
-  class Command : AbstractNode {
+  class Command {
     Term target = null;
     Term call;
     Flag[string] flags;
@@ -433,7 +398,7 @@ end:
     assert(c.pipe.pipe is null);
   }
 
-  class Program : AbstractNode {
+  class Program {
     Command[] commands;
   }
 
