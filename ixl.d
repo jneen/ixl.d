@@ -18,25 +18,25 @@ class Scanner {
 
   this(in string s) { this.s = s; }
 
-  char peek() { return peek(0); }
+  pure bool hasMore() { return hasMore(1); }
+  pure bool hasMore(size_t n) { return pos <= s.length - n; }
 
-  char peek(size_t n) {
-    return s[n + pos];
-  }
+  pure char peek() { return peek(0); }
+  pure char peek(size_t n) { return s[n + pos]; }
 
-  bool test(char ch) { return test(0, ch); }
-  bool test(size_t i, char ch) {
+  pure bool test(char ch) { return test(0, ch); }
+  pure bool test(size_t i, char ch) {
     return hasMore() && peek(i) == ch;
   }
 
-  bool test(string st) { return test(0, st); }
-  bool test(size_t i, string st) {
+  pure bool test(string st) { return test(0, st); }
+  pure bool test(size_t i, string st) {
     return hasMore() && inPattern(peek(i), st);
   }
 
-  string advance() { return advance(1); }
+  pure string advance() { return advance(1); }
 
-  string advance(size_t n) {
+  pure string advance(size_t n) {
     assert(pos <= s.length - n);
 
     pos += n;
@@ -55,21 +55,10 @@ class Scanner {
     throw new Error(message);
   }
 
-  string pre() {
-    return s[0 .. pos];
-  }
+  pure string pre() { return s[0 .. pos]; }
+  pure string post() { return s[pos .. $]; }
 
-  string post() {
-    return s[pos .. $];
-  }
-
-  bool hasMore() { return hasMore(1); }
-
-  bool hasMore(size_t n) {
-    return pos <= s.length - n;
-  }
-
-  string consume(string pattern) {
+  pure string consume(string pattern) {
     size_t oldPos = pos;
     while (hasMore()) {
       if (inPattern(peek(), pattern)) {
@@ -83,7 +72,7 @@ class Scanner {
     return s[oldPos .. $];
   }
 
-  string consumeNot(string pattern) {
+  pure string consumeNot(string pattern) {
     size_t oldPos = pos;
     while (hasMore()) {
       if (!inPattern(peek(), pattern)) {
