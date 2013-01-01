@@ -21,6 +21,8 @@ class Scanner {
   pure bool hasMore() { return hasMore(1); }
   pure bool hasMore(size_t n) { return pos <= s.length - n; }
 
+  pure bool isValid() { return hasMore(0); }
+
   pure char peek() { return peek(0); }
   pure char peek(size_t n) { return s[n + pos]; }
 
@@ -35,10 +37,10 @@ class Scanner {
   }
 
   pure string advance() { return advance(1); }
-
-  pure string advance(size_t n) {
-    assert(pos <= s.length - n);
-
+  pure string advance(size_t n)
+    in { assert(hasMore(n)); }
+    out(result) { assert(isValid()); }
+  body {
     pos += n;
     return s[ pos - n .. pos ];
   }
@@ -58,7 +60,10 @@ class Scanner {
   pure string pre() { return s[0 .. pos]; }
   pure string post() { return s[pos .. $]; }
 
-  pure string consume(string pattern) {
+  pure string consume(string pattern)
+    in { assert(isValid()); }
+    out(result) { assert(isValid()); }
+  body {
     size_t oldPos = pos;
     while (hasMore()) {
       if (inPattern(peek(), pattern)) {
@@ -72,7 +77,10 @@ class Scanner {
     return s[oldPos .. $];
   }
 
-  pure string consumeNot(string pattern) {
+  pure string consumeNot(string pattern)
+    in { assert(isValid()); }
+    out(result) { assert(isValid()); }
+  body {
     size_t oldPos = pos;
     while (hasMore()) {
       if (!inPattern(peek(), pattern)) {
@@ -411,6 +419,38 @@ end:
 
 IxlScanner.Program parseIxl(in string s) {
   return (new IxlScanner(s)).parseIxl();
+}
+
+class IxlType {
+  string name;
+  IxlType super_;
+}
+
+class IxlObject {
+  IxlType type;
+  IxlObject[string] ixlData;
+  void *nativeData;
+}
+
+struct NativeImplementation {
+  bool delegate(IxlObject call) dispatch;
+  IxlObject delegate(IxlObject call) impl;
+}
+
+struct IxlImplementation {
+  IxlScanner.Block dispatch;
+  IxlScanner.Block impl;
+}
+
+class IxlMethod {
+  enum Type { native, ixl };
+
+  Type type;
+
+  union {
+    NativeImplementation native;
+    IxlImplementation ixl;
+  }
 }
 
 unittest {
